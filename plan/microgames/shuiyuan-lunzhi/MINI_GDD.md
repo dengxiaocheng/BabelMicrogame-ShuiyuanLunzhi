@@ -13,11 +13,11 @@
 
 ## State
 
-- resource
-- pressure
-- risk
-- relation
-- round
+- water
+- queue_order
+- spillage
+- trust
+- day
 
 ## UI
 

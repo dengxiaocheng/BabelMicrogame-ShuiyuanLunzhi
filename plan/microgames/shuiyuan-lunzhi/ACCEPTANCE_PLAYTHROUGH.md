@@ -1,7 +1,7 @@
 # ACCEPTANCE_PLAYTHROUGH: 水源轮值
 
 ## Scripted Playthrough
-1. 开局显示 resource / pressure / risk / relation / round
+1. 开局显示 water / queue_order / spillage / trust / day
 2. 玩家执行一次核心操作：排队 -> 装水 -> 选择路线 -> 搬回棚区 -> 分配或藏水 -> 结算信任和存水
 3. 系统必须反馈一个资源或身体压力变化
 4. 系统必须反馈一个关系或风险变化
