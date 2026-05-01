@@ -8,6 +8,7 @@ import {
   createInitialState, startQueue, advanceQueue,
   fillWater, finishFill, chooseRoute,
   carryBack, distributeWater, settleRound, tick,
+  getOutcome,
 } from './game.js';
 
 let state, scene;

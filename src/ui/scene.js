@@ -117,6 +117,12 @@ export class Scene {
     // Stored water
     c.fillText(`存水 ${s.resource.stored.toFixed(1)}L`, 240, 20);
 
+    // Personal reserve
+    if (s.resource.personalReserve > 0) {
+      c.fillStyle = '#ab47bc';
+      c.fillText(`私藏 ${s.resource.personalReserve.toFixed(1)}L`, 320, 20);
+    }
+
     // Time
     c.fillStyle = '#888'; c.fillText('时间', 380, 12);
     c.fillStyle = '#444'; c.fillRect(380, 16, 70, 8);
@@ -382,7 +388,7 @@ export class Scene {
     this._drawBtn(350, 330, 90, 32, '确认分配', 'confirmDistribute', '#2e7d32');
 
     c.fillStyle = '#a1887f'; c.font = '11px sans-serif'; c.textAlign = 'center';
-    c.fillText('点击水罐倒水 +1L，点击暗处藏水 +1L', this.W / 2, 385);
+    c.fillText(`点击水罐倒水 +1L，点击暗处藏水 +1L | 暴露度 ${(s.risk.exposure * 100).toFixed(0)}%（越高越易被发现）`, this.W / 2, 385);
   }
 
   // --- Phase: SETTLE ---
@@ -395,12 +401,15 @@ export class Scene {
     c.fillText(`第 ${s.round.current} 轮结算`, this.W / 2, 80);
 
     // Stats
+    const projStored = s.resource.stored + s.distributedWater;
+    const projReserve = s.resource.personalReserve + s.hidWater;
     const stats = [
       { label: '分配出去', value: `${s.distributedWater.toFixed(1)}L`, color: '#66bb6a' },
       { label: '藏水', value: `${s.hidWater.toFixed(1)}L`, color: '#ab47bc' },
       { label: '洒漏', value: `${s.carrySpillage.toFixed(1)}L`, color: '#ef5350' },
       { label: '信任', value: `${s.relation.trust.toFixed(0)}`, color: '#4fc3f7' },
-      { label: '存水', value: `${s.resource.stored.toFixed(1)}L`, color: '#29b6f6' },
+      { label: '存水', value: `${projStored.toFixed(1)}L`, color: '#29b6f6' },
+      { label: '私藏', value: `${projReserve.toFixed(1)}L`, color: '#ce93d8' },
     ];
     stats.forEach((st, i) => {
       const y = 120 + i * 36;
@@ -419,20 +428,43 @@ export class Scene {
     const c = this.ctx, s = this.state;
     this.zones = [];
 
-    c.fillStyle = '#ef5350'; c.font = 'bold 20px sans-serif'; c.textAlign = 'center';
-    c.fillText('游戏结束', this.W / 2, 120);
-
-    const lastLog = s.log.slice(-1)[0];
-    if (lastLog) {
-      c.fillStyle = '#ffcc80'; c.font = '14px sans-serif';
-      c.fillText(lastLog.msg, this.W / 2, 160);
+    // Determine outcome
+    let outcomeLabel = '结算';
+    let outcomeColor = '#ffcc80';
+    for (let i = s.log.length - 1; i >= 0; i--) {
+      const m = s.log[i].msg;
+      if (m.includes('挺过')) { outcomeLabel = '挺过轮值'; outcomeColor = '#66bb6a'; break; }
+      if (m.includes('勉强')) { outcomeLabel = '勉强撑过'; outcomeColor = '#fdd835'; break; }
+      if (m.includes('水量不足')) { outcomeLabel = '水量不足'; outcomeColor = '#ef5350'; break; }
+      if (m.includes('水源关闭')) { outcomeLabel = '水源关闭'; outcomeColor = '#ef5350'; break; }
+      if (m.includes('赶出')) { outcomeLabel = '被赶出队伍'; outcomeColor = '#ef5350'; break; }
     }
 
-    c.fillStyle = '#ccc'; c.font = '13px sans-serif';
-    c.fillText(`最终存水: ${s.resource.stored.toFixed(1)}L  |  信任: ${s.relation.trust.toFixed(0)}`, this.W / 2, 200);
-    c.fillText(`存活 ${s.round.current} 轮`, this.W / 2, 230);
+    c.fillStyle = outcomeColor; c.font = 'bold 22px sans-serif'; c.textAlign = 'center';
+    c.fillText(outcomeLabel, this.W / 2, 100);
 
-    this._drawBtn(275, 280, 90, 36, '重新开始', 'restart', '#1565c0');
+    c.fillStyle = '#ef5350'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center';
+    c.fillText('游戏结束', this.W / 2, 130);
+
+    // Final stats
+    const stats = [
+      { label: '棚区存水', value: `${s.resource.stored.toFixed(1)}L`, color: '#29b6f6' },
+      { label: '私藏水量', value: `${s.resource.personalReserve.toFixed(1)}L`, color: '#ce93d8' },
+      { label: '信任', value: `${s.relation.trust.toFixed(0)}`, color: '#4fc3f7' },
+      { label: '暴露度', value: `${(s.risk.exposure * 100).toFixed(0)}%`, color: '#ef5350' },
+    ];
+    stats.forEach((st, i) => {
+      const y = 170 + i * 30;
+      c.fillStyle = '#bbb'; c.font = '13px sans-serif'; c.textAlign = 'right';
+      c.fillText(st.label, 300, y);
+      c.fillStyle = st.color; c.font = 'bold 14px sans-serif'; c.textAlign = 'left';
+      c.fillText(st.value, 320, y);
+    });
+
+    c.fillStyle = '#888'; c.font = '12px sans-serif'; c.textAlign = 'center';
+    c.fillText(`存活 ${Math.min(s.round.current, s.round.max)} / ${s.round.max} 轮`, this.W / 2, 300);
+
+    this._drawBtn(275, 330, 90, 36, '重新开始', 'restart', '#1565c0');
   }
 
   // --- Shared ---

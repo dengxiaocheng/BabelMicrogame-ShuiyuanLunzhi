@@ -34,7 +34,7 @@ export const ROUTES = {
 export function createInitialState() {
   return {
     // Required state per Direction Lock
-    resource: { water: 0, stored: 0, bucketCapacity: 10 },
+    resource: { water: 0, stored: 0, personalReserve: 0, bucketCapacity: 10 },
     pressure: { queuePosition: 0, queueSize: 6, timeLeft: 20 },
     risk: { exposure: 0, routeDanger: 0 },
     relation: { trust: 50 },
@@ -130,6 +130,8 @@ export function distributeWater(state, { give, hide }) {
     if (detected) {
       state.relation.trust = Math.max(0, state.relation.trust - hide * 5);
       pushLog(state, `藏水被发现！信任降至 ${state.relation.trust.toFixed(0)}`);
+    } else {
+      pushLog(state, `藏了 ${hide.toFixed(1)}L，暂时没被发现。`);
     }
   }
   state.phase = Phase.SETTLE;
@@ -141,6 +143,10 @@ export function settleRound(state) {
 
   // Add distributed water to stored
   state.resource.stored += state.distributedWater;
+  // Accumulate hidden water to personal reserve
+  state.resource.personalReserve += state.hidWater;
+
+  pushLog(state, `结算：分配 ${state.distributedWater.toFixed(1)}L → 棚区，私藏 ${state.hidWater.toFixed(1)}L`);
 
   // Trust recovery from giving
   state.relation.trust = Math.min(100, state.relation.trust + state.distributedWater * 2);
@@ -150,6 +156,7 @@ export function settleRound(state) {
   if (gameOver) {
     state.phase = Phase.GAME_OVER;
     pushLog(state, `游戏结束: ${gameOver}`);
+    pushLog(state, `最终 — 存水 ${state.resource.stored.toFixed(1)}L，私藏 ${state.resource.personalReserve.toFixed(1)}L，信任 ${state.relation.trust.toFixed(0)}`);
     return state;
   }
 
@@ -157,7 +164,9 @@ export function settleRound(state) {
   state.round.current++;
   if (state.round.current > state.round.max) {
     state.phase = Phase.GAME_OVER;
-    pushLog(state, '所有轮次结束。结算...');
+    const outcome = getOutcome(state);
+    pushLog(state, `所有轮次结束 — ${outcome.label}`);
+    pushLog(state, `最终 — 存水 ${state.resource.stored.toFixed(1)}L，私藏 ${state.resource.personalReserve.toFixed(1)}L，信任 ${state.relation.trust.toFixed(0)}`);
     return state;
   }
 
@@ -179,6 +188,18 @@ function checkGameOver(state) {
   if (state.pressure.timeLeft <= 0) return '水源关闭，时间耗尽';
   if (state.relation.trust <= 0) return '信任崩塌，被赶出队伍';
   return null;
+}
+
+export function getOutcome(state) {
+  if (state.pressure.timeLeft <= 0) return { type: 'timeout', label: '水源关闭' };
+  if (state.relation.trust <= 0) return { type: 'expelled', label: '被赶出队伍' };
+  const total = state.resource.stored + state.resource.personalReserve;
+  if (state.round.current > state.round.max) {
+    if (total >= 20 && state.relation.trust >= 40) return { type: 'survive', label: '挺过轮值' };
+    if (total >= 10) return { type: 'scrape', label: '勉强撑过' };
+    return { type: 'deplete', label: '水量不足' };
+  }
+  return { type: 'end', label: '结算' };
 }
 
 function pushLog(state, msg) {
