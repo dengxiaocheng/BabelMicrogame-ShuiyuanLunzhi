@@ -1,7 +1,8 @@
 /**
- * 水源轮值 — Entry Point & Minimal UI
- * Connects DOM to core loop phases.
+ * 水源轮值 — Entry Point & Scene Controller
+ * Connects canvas scene to core game loop.
  */
+import { Scene } from './ui/scene.js';
 import {
   Phase, ROUTES,
   createInitialState, startQueue, advanceQueue,
@@ -9,157 +10,118 @@ import {
   carryBack, distributeWater, settleRound, tick,
 } from './game.js';
 
-let state;
+let state, scene;
+let pendingGive = 0, pendingHide = 0;
 
-// --- DOM refs ---
-const $ = (sel) => document.querySelector(sel);
-const $status = () => $('#status');
-const $actions = () => $('#actions');
-const $log = () => $('#log');
+// --- DOM setup ---
 
-// --- Render helpers ---
+function setupDOM() {
+  // Inject styles
+  const style = document.createElement('style');
+  style.textContent = `
+    body { font-family: sans-serif; max-width: 660px; margin: 1rem auto; padding: 0 0.5rem; background: #1a1a2e; color: #e0e0e0; }
+    h1 { color: #4fc3f7; font-size: 1.2rem; margin: 0 0 0.5rem; }
+    #scene { width: 100%; max-width: 640px; border-radius: 6px; display: block; background: #3e2723; }
+    #log { background: #0a0a1a; padding: 0.6rem; border-radius: 6px; margin-top: 0.5rem; min-height: 80px; font-size: 0.8rem; line-height: 1.5; max-height: 120px; overflow-y: auto; }
+    .log-entry { border-bottom: 1px solid #222; padding: 1px 0; }
+  `;
+  document.head.appendChild(style);
+
+  // Hide old elements
+  const oldStatus = document.getElementById('status');
+  const oldActions = document.getElementById('actions');
+  if (oldStatus) oldStatus.style.display = 'none';
+  if (oldActions) oldActions.style.display = 'none';
+
+  // Insert canvas
+  const canvas = document.createElement('canvas');
+  canvas.id = 'scene';
+  const h1 = document.querySelector('h1');
+  h1.after(canvas);
+}
+
+// --- Action dispatcher ---
+
+function handleAction(action, data) {
+  switch (action) {
+    case 'advanceQueue':
+      advanceQueue(state);
+      tick(state);
+      break;
+    case 'fillWater':
+      fillWater(state, 2);
+      break;
+    case 'finishFill':
+      finishFill(state);
+      break;
+    case 'chooseRoute':
+      chooseRoute(state, data);
+      // Don't tick — let carry animation play
+      break;
+    case 'arriveCamp':
+      carryBack(state);
+      pendingGive = 0;
+      pendingHide = 0;
+      break;
+    case 'pourWater':
+      if (pendingGive + pendingHide < state.bucketFill) {
+        pendingGive = Math.min(state.bucketFill - pendingHide, pendingGive + 1);
+      }
+      break;
+    case 'hideWater':
+      if (pendingGive + pendingHide < state.bucketFill) {
+        pendingHide = Math.min(state.bucketFill - pendingGive, pendingHide + 1);
+      }
+      break;
+    case 'resetDistribute':
+      pendingGive = 0;
+      pendingHide = 0;
+      break;
+    case 'confirmDistribute':
+      distributeWater(state, { give: pendingGive, hide: pendingHide });
+      break;
+    case 'nextRound':
+      settleRound(state);
+      pendingGive = 0;
+      pendingHide = 0;
+      break;
+    case 'restart':
+      initGame();
+      return;
+  }
+  render();
+}
+
+// --- Render ---
 
 function render() {
-  renderStatus();
-  renderActions();
+  scene.update(state, { pendingGive, pendingHide });
   renderLog();
 }
 
-function renderStatus() {
-  const s = state;
-  const phaseLabel = {
-    [Phase.QUEUE]: `排队中 (位置 ${s.pressure.queuePosition})`,
-    [Phase.FILL]: `装水中 (桶: ${s.bucketFill.toFixed(1)}/${s.resource.bucketCapacity})`,
-    [Phase.ROUTE]: '选择路线',
-    [Phase.CARRY]: '搬运中...',
-    [Phase.DISTRIBUTE]: '分配或藏水',
-    [Phase.SETTLE]: '结算中',
-    [Phase.GAME_OVER]: '游戏结束',
-  }[s.phase] || s.phase;
-
-  $status().innerHTML = `
-    <div><strong>第 ${s.round.current}/${s.round.max} 轮</strong> — ${phaseLabel}</div>
-    <div>存水: ${s.resource.stored.toFixed(1)} | 信任: ${s.relation.trust.toFixed(0)} | 剩余时间: ${s.pressure.timeLeft.toFixed(1)}</div>
-    <div>风险暴露: ${(s.risk.exposure * 100).toFixed(0)}%</div>
-  `;
-}
-
-function renderActions() {
-  const el = $actions();
-  el.innerHTML = '';
-  const actions = getPhaseActions();
-  for (const a of actions) {
-    const btn = document.createElement('button');
-    btn.textContent = a.label;
-    btn.onclick = a.fn;
-    el.appendChild(btn);
-    el.appendChild(document.createTextNode(' '));
-  }
-}
-
 function renderLog() {
+  const el = document.getElementById('log');
+  if (!el) return;
   const entries = state.log.slice(-8);
-  $log().innerHTML = entries
-    .map((e) => `<div class="log-entry">[${e.phase}] ${e.msg}</div>`)
+  el.innerHTML = entries
+    .map(e => `<div class="log-entry"><span style="color:#666">[${e.round}]</span> ${e.msg}</div>`)
     .join('');
-}
-
-// --- Phase action generators ---
-
-function getPhaseActions() {
-  switch (state.phase) {
-    case Phase.QUEUE:
-      return [{ label: '等待前进', fn: actionAdvanceQueue }];
-    case Phase.FILL:
-      return [
-        { label: '装满', fn: actionFillMax },
-        { label: '装一半', fn: actionFillHalf },
-        { label: '装完了', fn: actionFinishFill },
-      ];
-    case Phase.ROUTE:
-      return Object.entries(ROUTES).map(([key, r]) => ({
-        label: `${r.name} (洒${(r.spillRate * 100).toFixed(0)}%)`,
-        fn: () => actionChooseRoute(key),
-      }));
-    case Phase.CARRY:
-      return [{ label: '继续走', fn: actionCarry }];
-    case Phase.DISTRIBUTE:
-      return [
-        { label: '全部分配', fn: actionGiveAll },
-        { label: '分配一半，藏一半', fn: actionGiveHalfHideHalf },
-        { label: '全部藏起来', fn: actionHideAll },
-      ];
-    case Phase.SETTLE:
-      return [{ label: '下一轮', fn: actionSettle }];
-    case Phase.GAME_OVER:
-      return [{ label: '重新开始', fn: initGame }];
-    default:
-      return [];
-  }
-}
-
-// --- Action handlers ---
-
-function actionAdvanceQueue() {
-  advanceQueue(state);
-  tick(state);
-  render();
-}
-
-function actionFillMax() {
-  fillWater(state, state.resource.bucketCapacity);
-  render();
-}
-
-function actionFillHalf() {
-  fillWater(state, Math.ceil(state.resource.bucketCapacity / 2));
-  render();
-}
-
-function actionFinishFill() {
-  finishFill(state);
-  render();
-}
-
-function actionChooseRoute(key) {
-  chooseRoute(state, key);
-  tick(state);
-  render();
-}
-
-function actionCarry() {
-  carryBack(state);
-  render();
-}
-
-function actionGiveAll() {
-  distributeWater(state, { give: state.bucketFill, hide: 0 });
-  render();
-}
-
-function actionGiveHalfHideHalf() {
-  const half = state.bucketFill / 2;
-  distributeWater(state, { give: half, hide: half });
-  render();
-}
-
-function actionHideAll() {
-  distributeWater(state, { give: 0, hide: state.bucketFill });
-  render();
-}
-
-function actionSettle() {
-  settleRound(state);
-  render();
+  el.scrollTop = el.scrollHeight;
 }
 
 // --- Init ---
 
 function initGame() {
   state = createInitialState();
+  pendingGive = 0;
+  pendingHide = 0;
   startQueue(state);
   render();
 }
 
 // Boot
-document.addEventListener('DOMContentLoaded', initGame);
+document.addEventListener('DOMContentLoaded', () => {
+  setupDOM();
+  scene = new Scene('scene', handleAction);
+  initGame();
+});
