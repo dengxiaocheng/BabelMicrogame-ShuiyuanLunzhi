@@ -7,7 +7,8 @@
  * and produce feedback through Feedback Channels (水位线, 洒漏轨迹, 队列骚动, 信任变化).
  */
 
-import { Phase } from '../game.js';
+// Phase strings inlined to break circular import (game.js → events.js → game.js)
+const Phase = { QUEUE: 'QUEUE', FILL: 'FILL', ROUTE: 'ROUTE', CARRY: 'CARRY', DISTRIBUTE: 'DISTRIBUTE', SETTLE: 'SETTLE' };
 
 // --- Feedback channels (mapped to Scene Objects) ---
 
