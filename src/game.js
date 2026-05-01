@@ -64,6 +64,8 @@ export function advanceQueue(state) {
   if (state.phase !== Phase.QUEUE) return state;
   state.pressure.queuePosition--;
   state.pressure.timeLeft = Math.max(0, state.pressure.timeLeft - 0.5);
+  // State coupling: relation pressure — waiting erodes group patience
+  state.relation.trust = Math.max(0, state.relation.trust - 0.5);
   if (state.pressure.queuePosition <= 0) {
     state.phase = Phase.FILL;
     pushLog(state, '排到了！开始装水。');
@@ -79,6 +81,8 @@ export function fillWater(state, amount) {
   const fill = Math.min(amount, maxFill);
   state.bucketFill += fill;
   state.pressure.timeLeft = Math.max(0, state.pressure.timeLeft - 0.5);
+  // State coupling: risk pressure — drawing water increases exposure
+  state.risk.exposure = Math.min(1, state.risk.exposure + 0.02);
   pushLog(state, `装水 ${fill.toFixed(1)} 升，桶里有 ${state.bucketFill.toFixed(1)} 升`);
   return state;
 }
@@ -150,6 +154,9 @@ export function settleRound(state) {
 
   // Trust recovery from giving
   state.relation.trust = Math.min(100, state.relation.trust + state.distributedWater * 2);
+
+  // Exposure decays between rounds — not everything carries over
+  state.risk.exposure = Math.max(0, state.risk.exposure * 0.6);
 
   // Check end conditions
   const gameOver = checkGameOver(state);

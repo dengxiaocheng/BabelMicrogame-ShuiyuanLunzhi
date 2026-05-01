@@ -204,3 +204,43 @@ describe('full loop', () => {
     assert.equal(s.resource.stored > 0, true, 'should have stored water after giving');
   });
 });
+
+// --- State coupling: every effective operation pushes both pressure categories ---
+
+describe('state coupling', () => {
+  it('advanceQueue erodes trust (relation pressure) while consuming time (resource pressure)', () => {
+    const s = createInitialState();
+    startQueue(s);
+    const trustBefore = s.relation.trust;
+    const timeBefore = s.pressure.timeLeft;
+    advanceQueue(s);
+    assert.ok(s.relation.trust < trustBefore, 'trust should decrease when waiting in queue');
+    assert.ok(s.pressure.timeLeft < timeBefore, 'time should decrease when waiting');
+  });
+
+  it('fillWater increases exposure (risk pressure) while filling bucket (resource pressure)', () => {
+    const s = playToFill();
+    const expBefore = s.risk.exposure;
+    const fillBefore = s.bucketFill;
+    fillWater(s, 2);
+    assert.ok(s.risk.exposure > expBefore, 'exposure should increase when drawing water');
+    assert.ok(s.bucketFill > fillBefore, 'bucket should fill');
+  });
+
+  it('exposure decays between rounds in settleRound', () => {
+    const s = playToSettle();
+    s.risk.exposure = 0.8;
+    settleRound(s);
+    assert.ok(s.risk.exposure < 0.8, 'exposure should decay after settling a round');
+    assert.ok(s.risk.exposure > 0, 'exposure should not vanish completely');
+  });
+
+  it('carryBack applies spillage (resource) and exposure (risk) simultaneously', () => {
+    const s = playToCarry();
+    const fillBefore = s.bucketFill;
+    const expBefore = s.risk.exposure;
+    carryBack(s);
+    assert.ok(s.bucketFill < fillBefore, 'water should spill during carry');
+    assert.ok(s.risk.exposure >= expBefore, 'exposure should not decrease during carry');
+  });
+});
