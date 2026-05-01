@@ -90,6 +90,7 @@ export class Scene {
     c.fillStyle = sky;
     c.fillRect(0, 34, this.W, 46);
     this._drawHUD();
+    this._drawEventBanner();
     const fn = { QUEUE: '_drawQueue', FILL: '_drawFill', ROUTE: '_drawRoute', CARRY: '_drawCarry', DISTRIBUTE: '_drawDistribute', SETTLE: '_drawSettle', GAME_OVER: '_drawGameOver' }[this.phase];
     if (fn) this[fn]();
   }
@@ -465,6 +466,34 @@ export class Scene {
     c.fillText(`存活 ${Math.min(s.round.current, s.round.max)} / ${s.round.max} 轮`, this.W / 2, 300);
 
     this._drawBtn(275, 330, 90, 36, '重新开始', 'restart', '#1565c0');
+  }
+
+  // --- Event banner ---
+
+  _drawEventBanner() {
+    const s = this.state;
+    if (!s.activeEvent) return;
+    const c = this.ctx, evt = s.activeEvent;
+    const colors = {
+      water_level: '#29b6f6',
+      spill_trail: '#ef5350',
+      queue_unrest: '#ff9800',
+      trust_shift: '#ab47bc',
+    };
+    const accent = colors[evt.feedback?.channel] || '#ffcc80';
+    // Dark banner at bottom
+    c.fillStyle = 'rgba(0,0,0,0.82)';
+    c.fillRect(0, this.H - 24, this.W, 24);
+    // Accent line
+    c.fillStyle = accent;
+    c.fillRect(0, this.H - 24, this.W, 2);
+    // Text
+    c.fillStyle = accent;
+    c.font = '11px sans-serif';
+    c.textAlign = 'center';
+    const text = evt.text.length > 52 ? evt.text.slice(0, 49) + '...' : evt.text;
+    c.fillText(text, this.W / 2, this.H - 7);
+    c.textAlign = 'left';
   }
 
   // --- Shared ---

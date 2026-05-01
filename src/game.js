@@ -3,6 +3,8 @@
  * Direction Lock: 排队 -> 装水 -> 选择路线 -> 搬回棚区 -> 分配或藏水 -> 结算信任和存水
  */
 
+import { rollEvent } from './content/events.js';
+
 // --- Phase enum ---
 export const Phase = {
   QUEUE: 'QUEUE',
@@ -42,6 +44,7 @@ export function createInitialState() {
 
     // Internal
     phase: Phase.QUEUE,
+    activeEvent: null,
     bucketFill: 0,
     chosenRoute: null,
     carrySpillage: 0,
@@ -66,6 +69,8 @@ export function advanceQueue(state) {
   state.pressure.timeLeft = Math.max(0, state.pressure.timeLeft - 0.5);
   // State coupling: relation pressure — waiting erodes group patience
   state.relation.trust = Math.max(0, state.relation.trust - 0.5);
+  // Content event
+  _tryEvent(state);
   if (state.pressure.queuePosition <= 0) {
     state.phase = Phase.FILL;
     pushLog(state, '排到了！开始装水。');
@@ -83,6 +88,8 @@ export function fillWater(state, amount) {
   state.pressure.timeLeft = Math.max(0, state.pressure.timeLeft - 0.5);
   // State coupling: risk pressure — drawing water increases exposure
   state.risk.exposure = Math.min(1, state.risk.exposure + 0.02);
+  // Content event
+  _tryEvent(state);
   pushLog(state, `装水 ${fill.toFixed(1)} 升，桶里有 ${state.bucketFill.toFixed(1)} 升`);
   return state;
 }
@@ -112,6 +119,8 @@ export function carryBack(state) {
   state.carrySpillage = spillage;
   state.risk.exposure = Math.min(1, state.risk.exposure + route.riskMod);
   state.bucketFill = Math.max(0, state.bucketFill - spillage);
+  // Content event (fires before phase change so events see CARRY phase)
+  _tryEvent(state);
   state.phase = Phase.DISTRIBUTE;
   pushLog(state, `搬回棚区，洒了 ${spillage.toFixed(1)} 升，剩 ${state.bucketFill.toFixed(1)} 升`);
   return state;
@@ -138,6 +147,8 @@ export function distributeWater(state, { give, hide }) {
       pushLog(state, `藏了 ${hide.toFixed(1)}L，暂时没被发现。`);
     }
   }
+  // Content event (fires before phase change so events see DISTRIBUTE phase)
+  _tryEvent(state);
   state.phase = Phase.SETTLE;
   return state;
 }
@@ -178,6 +189,7 @@ export function settleRound(state) {
   }
 
   // Reset per-round state
+  state.activeEvent = null;
   state.bucketFill = 0;
   state.chosenRoute = null;
   state.carrySpillage = 0;
@@ -190,6 +202,14 @@ export function settleRound(state) {
 }
 
 // --- Helpers ---
+
+function _tryEvent(state) {
+  const evt = rollEvent(state);
+  if (evt) {
+    pushLog(state, `[事件] ${evt.text}`);
+    state.activeEvent = evt;
+  }
+}
 
 function checkGameOver(state) {
   if (state.pressure.timeLeft <= 0) return '水源关闭，时间耗尽';
